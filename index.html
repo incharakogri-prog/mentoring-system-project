@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Student Warden Alert System</title>
+
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- React & ReactDOM CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+
+  <!-- Babel (for JSX in browser) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- QR Code library -->
+  <script src="https://unpkg.com/qrcode@1.5.3/build/qrcode.min.js"></script>
+
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Space Grotesk', sans-serif; background: #0d0d1a; color: #e0e0e0; }
+
+    :root {
+      --gold: #e2b96f;
+      --gold-dark: #c49a40;
+      --navy: #0d0d1a;
+      --navy-2: #13132b;
+      --navy-3: #1a1a3a;
+      --border: rgba(226, 185, 111, 0.2);
+      --red: #e74c3c;
+      --green: #27ae60;
+      --blue: #3498db;
+      --orange: #e67e22;
+    }
+
+    .glass {
+      background: rgba(26, 26, 58, 0.7);
+      border: 1px solid var(--border);
+      backdrop-filter: blur(10px);
+    }
+
+    .btn-gold {
+      background: linear-gradient(135deg, #e2b96f, #c49a40);
+      color: #0d0d1a;
+      font-weight: 700;
+      border: none;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .btn-gold:hover { transform: translateY(-1px); box-shadow: 0 4px 20px rgba(226,185,111,0.4); }
+
+    .btn-outline {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--gold);
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+    .btn-outline:hover { background: rgba(226,185,111,0.1); }
+
+    .input-field {
+      background: rgba(13,13,26,0.8);
+      border: 1px solid rgba(226,185,111,0.2);
+      color: #e0e0e0;
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-family: 'Space Grotesk', sans-serif;
+      font-size: 14px;
+      transition: border-color 0.2s;
+    }
+    .input-field:focus { outline: none; border-color: var(--gold); }
+    .input-field.error { border-color: var(--red); }
+
+    .tab-active {
+      background: var(--gold);
+      color: #0d0d1a;
+      font-weight: 700;
+    }
+
+    .tab-inactive {
+      color: #888;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .tab-inactive:hover { color: var(--gold); }
+
+    .badge-in { background: rgba(39,174,96,0.2); color: #2ecc71; border: 1px solid rgba(39,174,96,0.3); }
+    .badge-out { background: rgba(231,76,60,0.2); color: #e74c3c; border: 1px solid rgba(231,76,60,0.3); }
+    .badge-late { background: rgba(230,126,34,0.2); color: #e67e22; border: 1px solid rgba(230,126,34,0.3); }
+
+    .stat-card { transition: transform 0.2s; }
+    .stat-card:hover { transform: translateY(-3px); }
+
+    @keyframes pulse-ring {
+      0% { transform: scale(0.9); opacity: 1; }
+      100% { transform: scale(1.5); opacity: 0; }
+    }
+    .pulse { position: relative; }
+    .pulse::before {
+      content: '';
+      position: absolute;
+      inset: -4px;
+      border-radius: 50%;
+      background: var(--green);
+      animation: pulse-ring 1.5s infinite;
+    }
+
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+    .fade-in { animation: fadeIn 0.4s ease forwards; }
+
+    .sidebar-item { 
+      display: flex; align-items: center; gap: 12px; 
+      padding: 12px 16px; border-radius: 10px; 
+      cursor: pointer; transition: all 0.2s; 
+      color: #888; font-weight: 500;
+    }
+    .sidebar-item:hover { background: rgba(226,185,111,0.1); color: var(--gold); }
+    .sidebar-item.active { background: rgba(226,185,111,0.15); color: var(--gold); border-left: 3px solid var(--gold); }
+
+    .mono { font-family: 'JetBrains Mono', monospace; }
+
+    .toast {
+      position: fixed; bottom: 24px; right: 24px;
+      z-index: 9999; padding: 14px 20px;
+      border-radius: 10px; font-weight: 600;
+      animation: fadeIn 0.3s ease;
+      max-width: 360px;
+    }
+
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: var(--navy-2); }
+    ::-webkit-scrollbar-thumb { background: rgba(226,185,111,0.3); border-radius: 3px; }
+  </style>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            gold: '#e2b96f',
+            navy: '#0d0d1a',
+          }
+        }
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    // ─────────────────────────────────────────────
+    // CONSTANTS & HELPERS
+    // ─────────────────────────────────────────────
+    const API_BASE = 'http://localhost:3000';
+
+    const WARDEN_CREDENTIALS = { username: 'warden', password: 'hostel123' };
+
+    const defaultSettings = {
+      weekdayCheckin: '06:00',
+      weekdayClosing: '21:00',
+      weekendCheckin: '06:00',
+      weekendClosing: '22:00',
+      reminderMinutes: 5,
+    };
+
+    function isWeekend() {
+      const day = new Date().getDay();
+      return day === 0 || day === 6;
+    }
+
+    function getClosingTime(settings) {
+      return isWeekend() ? settings.weekendClosing : settings.weekdayClosing;
+    }
+
+    function formatTime(date) {
+      return date.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit', hour12: true });
+    }
+
+    function formatDateTime(date) {
+      return new Date(date).toLocaleString('en-IN');
+    }
+
+    function isLate(settings) {
+      const now = new Date();
+      const closing = getClosingTime(settings);
+      const [h, m] = closing.split(':').map(Number);
+      const closingDate = new Date();
+      closingDate.setHours(h, m, 0, 0);
+      return now > closingDate;
+    }
+
+    function timeToMinutes(timeStr) {
+      const [h, m] = timeStr.split(':').map(Number);
+      return h * 60 + m;
+    }
+
+    function nowMinutes() {
+      const now = new Date();
+      return now.getHours() * 60 + now.getMinutes();
+    }
+
+    // Validation helpers
+    function validateStudent(data) {
+      const errors = {};
+      if (!/^[a-zA-Z\s]+$/.test(data.name)) errors.name = 'Name must contain letters only';
+      if (!/^[a-zA-Z0-9]+$/.test(data.studentId)) errors.studentId = 'Student ID must be alphanumeric';
+      if (!data.email.includes('@')) errors.email = 'Email must contain @';
+      if (data.phone.replace(/\D/g, '').length < 10) errors.phone = 'Phone must have at least 10 digits';
+      if (!/^[a-zA-Z\s]+$/.test(data.parentName)) errors.parentName = 'Parent name must contain letters only';
+      if (!data.parentEmail.includes('@')) errors.parentEmail = 'Parent email must contain @';
+      if (data.parentPhone.replace(/\D/g, '').length < 10) errors.parentPhone = 'Parent phone must have at least 10 digits';
+      return errors;
+    }
+
+    // LocalStorage helpers
+    const storage = {
+      get: (key, fallback = null) => {
+        try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; }
+      },
+      set: (key, val) => localStorage.setItem(key, JSON.stringify(val)),
+    };
+
+    // API call helper
+    async function sendEmail(payload) {
+      try {
+        const res = await fetch(`${API_BASE}/send-email`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+        });
+        return await res.json();
+      } catch {
+        return { success: false, message: 'Backend server not reachable. Email not sent.' };
+      }
+    }
+
+    // ─────────────────────────────────────────────
+    // TOAST COMPONENT
+    // ─────────────────────────────────────────────
+    function Toast({ message, type, onClose }) {
+      useEffect(() => {
+        const t = setTimeout(onClose, 4000);
+        return () => clearTimeout(t);
+      }, []);
+      const colors = {
+        success: 'bg-green-900 border border-green-600 text-green-200',
+        error: 'bg-red-900 border border-red-600 text-red-200',
+        info: 'bg-blue-900 border border-blue-600 text-blue-200',
+        warning: 'bg-yellow-900 border border-yellow-600 text-yellow-200',
+      };
+      return (
+        <div className={`toast ${colors[type] || colors.info}`}>
+          <span className="mr-2">{type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️'}</span>
+          {message}
+        </div>
+      );
+    }
+
+    // ─────────────────────────────────────────────
+    // LOGIN PAGE
+    // ─────────────────────────────────────────────
+    function LoginPage({ onLogin }) {
+      const [form, setForm] = useState({ username: '', password: '' });
+      const [error, setError] = useState('');
+      const [loading, setLoading] = useState(false);
+
+      const handleLogin = () => {
+        setLoading(true);
+        setTimeout(() => {
+          if (form.username === WARDEN_CREDENTIALS.username && form.password === WARDEN_CREDENTIALS.password) {
+            onLogin();
+          } else {
+            setError('Invalid credentials. Try warden / hostel123');
+            setLoading(false);
+          }
+        }, 600);
+      };
+
+      return (
+        <div className="min-h-screen flex items-center justify-center p-4" style={{background: 'radial-gradient(ellipse at 30% 50%, #1a1a3a 0%, #0d0d1a 70%)'}}>
+          <div className="w-full max-w-md">
+            {/* Logo */}
+            <div className="text-center mb-10">
+              <div className="w-20 h-20 rounded-2xl mx-auto mb-4 flex items-center justify-center text-4xl"
+                style={{background: 'linear-gradient(135deg, #e2b96f, #c49a40)', boxShadow: '0 0 40px rgba(226,185,111,0.3)'}}>
+                🏫
+              </div>
+              <h1 className="text-3xl font-bold" style={{color: '#e2b96f'}}>Warden Portal</h1>
+              <p className="text-gray-400 mt-1">College Hostel Management System</p>
+            </div>
+
+            {/* Form */}
+            <div className="glass rounded-2xl p-8">
+              <div className="mb-5">
+                <label className="block text-sm font-medium text-gray-300 mb-2">Username</label>
+                <input
+                  type="text"
+                  className="input-field"
+                  placeholder="Enter username"
+                  value={form.username}
+                  onChange={e => setForm(p => ({...p, username: e.target.value}))}
+                  onKeyDown={e => e.key === 'Enter' && handleLogin()}
+                />
+              </div>
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-300 mb-2">Password</label>
+                <input
+                  type="password"
+                  className="input-field"
+                  placeholder="Enter password"
+                  value={form.password}
+                  onChange={e => setForm(p => ({...p, password: e.target.value}))}
+                  onKeyDown={e => e.key === 'Enter' && handleLogin()}
+                />
+              </div>
+              {error && <p className="text-red-400 text-sm mb-4 text-center">{error}</p>}
+              <button
+                onClick={handleLogin}
+                disabled={loading}
+                className="btn-gold w-full py-3 rounded-xl text-base font-bold"
+              >
+                {loading ? 'Signing in...' : '🔐 Sign In as Warden'}
+              </button>
+              <p className="text-center text-gray-500 text-xs mt-4 mono">Default: warden / hostel123</p>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ─────────────────────────────────────────────
+    // DASHBOARD STATS
+    // ─────────────────────────────────────────────
+    function DashboardPage({ students, attendance, settings }) {
+      const totalStudents = students.length;
+      const inside = students.filter(s => {
+        const logs = attendance.filter(a => a.studentId === s.studentId);
+        const last = logs[logs.length - 1];
+        return last && last.type === 'checkin';
+      });
+      const outside = totalStudents - inside.length;
+      const recentLogs = [...attendance].reverse().slice(0, 10);
+      const lateEntries = attendance.filter(a => a.isLate).length;
+
+      return (
+        <div className="fade-in">
+          <h2 className="text-2xl font-bold mb-6" style={{color: '#e2b96f'}}>Dashboard Overview</h2>
+
+          {/* Stat Cards */}
+          <div className="grid grid-cols-2 gap-4 mb-8 lg:grid-cols-4">
+            {[
+              { label: 'Total Students', value: totalStudents, icon: '👨‍🎓', color: '#3498db' },
+              { label: 'Inside Hostel', value: inside.length, icon: '🏠', color: '#27ae60' },
+              { label: 'Outside Hostel', value: outside, icon: '🚶', color: '#e74c3c' },
+              { label: 'Late Entries Today', value: lateEntries, icon: '⚠️', color: '#e67e22' },
+            ].map(stat => (
+              <div key={stat.label} className="glass rounded-2xl p-5 stat-card">
+                <div className="text-3xl mb-2">{stat.icon}</div>
+                <div className="text-3xl font-bold" style={{color: stat.color}}>{stat.value}</div>
+                <div className="text-gray-400 text-sm mt-1">{stat.label}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Current Status */}
+          <div className="glass rounded-2xl p-6 mb-6">
+            <h3 className="font-semibold text-lg mb-4" style={{color: '#e2b96f'}}>📍 Current Status</h3>
+            <div className="flex gap-4 flex-wrap">
+              <div className="flex items-center gap-2 text-sm">
+                <span className="w-2 h-2 rounded-full bg-green-400 pulse relative"></span>
+                <span className="text-gray-300">{isWeekend() ? 'Weekend' : 'Weekday'} Mode</span>
+              </div>
+              <div className="text-sm text-gray-400">
+                Closing Time: <span className="font-bold" style={{color: '#e2b96f'}}>{getClosingTime(settings)}</span>
+              </div>
+              <div className="text-sm">
+                Status: {isLate(settings) 
+                  ? <span className="text-red-400 font-bold">⛔ Gate Closed</span>
+                  : <span className="text-green-400 font-bold">✅ Gate Open</span>}
+              </div>
+            </div>
+          </div>
+
+          {/* Students Inside */}
+          {inside.length > 0 && (
+            <div className="glass rounded-2xl p-6 mb-6">
+              <h3 className="font-semibold text-lg mb-4" style={{color: '#e2b96f'}}>🏠 Students Currently Inside</h3>
+              <div className="flex flex-wrap gap-2">
+                {inside.map(s => (
+                  <span key={s.studentId} className="badge-in px-3 py-1 rounded-full text-sm mono">{s.studentId} · {s.name}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Recent Logs */}
+          <div className="glass rounded-2xl p-6">
+            <h3 className="font-semibold text-lg mb-4" style={{color: '#e2b96f'}}>📋 Recent Activity</h3>
+            {recentLogs.length === 0 ? (
+              <p className="text-gray-500 text-sm">No activity recorded yet.</p>
+            ) : (
+              <div className="space-y-2">
+                {recentLogs.map((log, i) => (
+                  <div key={i} className="flex items-center justify-between py-2 border-b border-gray-800 last:border-0">
+                    <div className="flex items-center gap-3">
+                      <span className={`px-2 py-0.5 rounded text-xs font-bold ${log.type === 'checkin' ? 'badge-in' : 'badge-out'}`}>
+                        {log.type === 'checkin' ? '↓ IN' : '↑ OUT'}
+                      </span>
+                      <span className="text-sm">{log.studentName}</span>
+                      <span className="mono text-xs text-gray-500">{log.studentId}</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {log.isLate && <span className="badge-late px-2 py-0.5 rounded text-xs">LATE</span>}
+                      <span className="text-xs text-gray-400">{formatDateTime(log.timestamp)}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ─────────────────────────────────────────────
+    // STUDENT REGISTRATION
+    // ─────────────────────────────────────────────
+    function RegistrationPage({ students, onRegister, showToast }) {
+      const empty = { name:'', studentId:'', email:'', phone:'', parentName:'', parentEmail:'', parentPhone:'' };
+      const [form, setForm] = useState(empty);
+      const [errors, setErrors] = useState({});
+      const [loading, setLoading] = useState(false);
+
+      const set = (k, v) => {
+        setForm(p => ({...p, [k]: v}));
+        if (errors[k]) setErrors(p => ({...p, [k]: ''}));
+      };
+
+      const handleSubmit = async () => {
+        const errs = validateStudent(form);
+        if (Object.keys(errs).length) { setErrors(errs); return; }
+
+        if (students.find(s => s.studentId === form.studentId)) {
+          setErrors({ studentId: 'Student ID already exists' });
+          return;
+        }
+
+        setLoading(true);
+        const student = { ...form, registeredAt: Date.now() };
+
+        // Send emails
+        const result = await sendEmail({ type: 'registration', student });
+        
+        onRegister(student);
+        setForm(empty);
+        setErrors({});
+        setLoading(false);
+
+        if (result.success) {
+          showToast('Student registered! Confirmation emails sent.', 'success');
+        } else {
+          showToast(`Student registered! Note: ${result.message}`, 'warning');
+        }
+      };
+
+      const Field = ({ label, fieldKey, type = 'text', placeholder }) => (
+        <div>
+          <label className="block text-sm font-medium text-gray-300 mb-1">{label}</label>
+          <input
+            type={type}
+            className={`input-field ${errors[fieldKey] ? 'error' : ''}`}
+            placeholder={placeholder}
+            value={form[fieldKey]}
+            onChange={e => set(fieldKey, e.target.value)}
+          />
+          {errors[fieldKey] && <p className="text-red-400 text-xs mt-1">{errors[fieldKey]}</p>}
+        </div>
+      );
+
+      return (
+        <div className="fade-in max-w-2xl">
+          <h2 className="text-2xl font-bold mb-6" style={{color: '#e2b96f'}}>Register New Student</h2>
+
+          <div className="glass rounded-2xl p-6 mb-4">
+            <h3 className="font-semibold mb-4 text-blue-300">👨‍🎓 Student Information</h3>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Student Name *" fieldKey="name" placeholder="John Doe" />
+              <Field label="Student ID *" fieldKey="studentId" placeholder="CS2024001" />
+              <Field label="Email *" fieldKey="email" type="email" placeholder="student@college.edu" />
+              <Field label="Phone *" fieldKey="phone" type="tel" placeholder="9876543210" />
+            </div>
+          </div>
+
+          <div className="glass rounded-2xl p-6 mb-6">
+            <h3 className="font-semibold mb-4 text-green-300">👨‍👩‍👦 Parent / Guardian Information</h3>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Parent Name *" fieldKey="parentName" placeholder="Mr. Robert Doe" />
+              <Field label="Parent Email *" fieldKey="parentEmail" type="email" placeholder="parent@email.com" />
+              <Field label="Parent Phone *" fieldKey="parentPhone" type="tel" placeholder="9876543210" />
+            </div>
+          </div>
+
+          <button
+            onClick={handleSubmit}
+            disabled={loading}
+            className="btn-gold w-full py-3 rounded-xl text-base font-bold"
+          >
+            {loading ? '⏳ Registering...' : '✅ Register Student & Send Emails'}
+          </button>
+
+          {/* Students List */}
+          {students.length > 0 && (
+            <div className="glass rounded-2xl p-6 mt-6">
+              <h3 className="font-semibold mb-4" style={{color: '#e2b96f'}}>Registered Students ({students.length})</h3>
+              <div className="space-y-2 max-h-64 overflow-y-auto">
+                {students.map(s => (
+                  <div key={s.studentId} className="flex justify-between items-center py-2 border-b border-gray-800">
+                    <div>
+                      <span className="font-medium text-sm">{s.name}</span>
+                      <span className="mono text-xs text-gray-400 ml-2">{s.studentId}</span>
+                    </div>
+                    <span className="text-xs text-gray-500">{s.email}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    // ─────────────────────────────────────────────
+    // QR SCANNER PAGE
+    // ─────────────────────────────────────────────
+    function QRScannerPage({ students, attendance, onScan, settings, showToast }) {
+      const [selectedStudent, setSelectedStudent] = useState('');
+      const [scanType, setScanType] = useState('checkin');
+      const [qrDataUrl, setQrDataUrl] = useState('');
+      const [lastScan, setLastScan] = useState(null);
+      const canvasRef = useRef(null);
+
+      // Generate QR code preview
+      useEffect(() => {
+        if (selectedStudent) {
+          const s = students.find(s => s.studentId === selectedStudent);
+          if (s && window.QRCode) {
+            const qrData = JSON.stringify({ studentId: s.studentId, name: s.name, type: scanType });
+            const canvas = document.createElement('canvas');
+            QRCode.toCanvas(canvas, qrData, { width: 200, color: { dark: '#e2b96f', light: '#0d0d1a' } }, (err) => {
+              if (!err) setQrDataUrl(canvas.toDataURL());
+            });
+          }
+        } else {
+          setQrDataUrl('');
+        }
+      }, [selectedStudent, scanType, students]);
+
+      const handleScan = async () => {
+        if (!selectedStudent) { showToast('Please select a student', 'warning'); return; }
+        const student = students.find(s => s.studentId === selectedStudent);
+        if (!student) return;
+
+        const now = new Date();
+        const late = scanType === 'checkin' && isLate(settings);
+        const closingTime = getClosingTime(settings);
+
+        const log = {
+          studentId: student.studentId,
+          studentName: student.name,
+          type: scanType,
+          timestamp: now.toISOString(),
+          isLate: late,
+        };
+
+        onScan(log);
+        setLastScan(log);
+
+        if (late && scanType === 'checkin') {
+          showToast(`⚠️ Late entry detected for ${student.name}! Notifying parent...`, 'warning');
+          const result = await sendEmail({
+            type: 'late-entry',
+            student,
+            entryTime: formatTime(now),
+            closingTime,
+          });
+          if (result.success) {
+            showToast(`Parent notified about late entry of ${student.name}`, 'error');
+          } else {
+            showToast(`Late entry logged. Note: ${result.message}`, 'warning');
+          }
+        } else {
+          showToast(`${scanType === 'checkin' ? 'Check-in' : 'Check-out'} recorded for ${student.name}`, 'success');
+        }
+      };
+
+      return (
+        <div className="fade-in">
+          <h2 className="text-2xl font-bold mb-6" style={{color: '#e2b96f'}}>QR Code Entry System</h2>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Scan Panel */}
+            <div className="glass rounded-2xl p-6">
+              <h3 className="font-semibold mb-4 text-blue-300">📱 Simulate QR Scan</h3>
+
+              <div className="mb-4">
+                <label className="block text-sm font-medium text-gray-300 mb-2">Select Student</label>
+                <select
+                  className="input-field"
+                  value={selectedStudent}
+                  onChange={e => setSelectedStudent(e.target.value)}
+                >
+                  <option value="">-- Choose Student --</option>
+                  {students.map(s => (
+                    <option key={s.studentId} value={s.studentId}>{s.name} ({s.studentId})</option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="mb-6">
+                <label className="block text-sm font-medium text-gray-300 mb-2">Scan Type</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {['checkin', 'checkout'].map(t => (
+                    <button
+                      key={t}
+                      onClick={() => setScanType(t)}
+                      className={`py-2 px-4 rounded-xl font-semibold text-sm transition-all ${scanType === t ? 'btn-gold' : 'btn-outline'}`}
+                    >
+                      {t === 'checkin' ? '↓ Check In' : '↑ Check Out'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* QR Preview */}
+              {qrDataUrl && (
+                <div className="flex flex-col items-center mb-6 p-4 rounded-xl bg-black bg-opacity-30">
+                  <p className="text-xs text-gray-400 mb-2">Student QR Code Preview</p>
+                  <img src={qrDataUrl} alt="QR Code" className="rounded-lg" style={{width: 160, height: 160}} />
+                </div>
+              )}
+
+              <button
+                onClick={handleScan}
+                disabled={!selectedStudent}
+                className="btn-gold w-full py-3 rounded-xl font-bold disabled:opacity-40"
+              >
+                📷 Simulate QR Scan
+              </button>
+
+              {/* Last Scan Result */}
+              {lastScan && (
+                <div className={`mt-4 p-4 rounded-xl border ${lastScan.isLate ? 'badge-late' : lastScan.type === 'checkin' ? 'badge-in' : 'badge-out'}`}>
+                  <p className="font-bold text-sm">Last Scan Result</p>
+                  <p className="text-sm mt-1">{lastScan.studentName} ({lastScan.studentId})</p>
+                  <p className="text-xs mt-1">{lastScan.type === 'checkin' ? '↓ Checked In' : '↑ Checked Out'} · {formatDateTime(lastScan.timestamp)}</p>
+                  {lastScan.isLate && <p className="text-xs mt-1 font-bold">⚠️ LATE ENTRY - Parent notified!</p>}
+                </div>
+              )}
+            </div>
+
+            {/* Attendance Log */}
+            <div className="glass rounded-2xl p-6">
+              <h3 className="font-semibold mb-4 text-green-300">📋 Attendance Log</h3>
+              {attendance.length === 0 ? (
+                <div className="text-center text-gray-500 py-12">
+                  <p className="text-4xl mb-2">📊</p>
+                  <p>No scans recorded yet</p>
+                </div>
+              ) : (
+                <div className="space-y-2 max-h-96 overflow-y-auto">
+                  {[...attendance].reverse().map((log, i) => (
+                    <div key={i} className="flex items-center justify-between py-2 border-b border-gray-800 last:border-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`px-2 py-0.5 rounded text-xs font-bold ${log.type === 'checkin' ? 'badge-in' : 'badge-out'}`}>
+                          {log.type === 'checkin' ? '↓ IN' : '↑ OUT'}
+                        </span>
+                        <div>
+                          <p className="text-sm font-medium">{log.studentName}</p>
+                          <p className="mono text-xs text-gray-500">{log.studentId}</p>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        {log.isLate && <span className="badge-late px-1.5 py-0.5 rounded text-xs block mb-1">LATE</span>}
+                        <span className="text-xs text-gray-400">{formatDateTime(log.timestamp)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ─────────────────────────────────────────────
+    // ATTENDANCE TABLE PAGE
+    // ─────────────────────────────────────────────
+    function AttendancePage({ students, attendance }) {
+      const [filter, setFilter] = useState('all');
+
+      const rows = students.map(s => {
+        const logs = attendance.filter(a => a.studentId === s.studentId);
+        const last = logs[logs.length - 1];
+        const inside = last && last.type === 'checkin';
+        const lateCount = logs.filter(l => l.isLate).length;
+        return { ...s, inside, last, lateCount };
+      });
+
+      const filtered = rows.filter(r => {
+        if (filter === 'inside') return r.inside;
+        if (filter === 'outside') return !r.inside;
+        if (filter === 'late') return r.lateCount > 0;
+        return true;
+      });
+
+      return (
+        <div className="fade-in">
+          <h2 className="text-2xl font-bold mb-6" style={{color: '#e2b96f'}}>Attendance Records</h2>
+
+          {/* Filter tabs */}
+          <div className="flex gap-2 mb-6 flex-wrap">
+            {['all', 'inside', 'outside', 'late'].map(f => (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={`px-4 py-2 rounded-xl text-sm font-semibold transition-all ${filter === f ? 'tab-active' : 'tab-inactive glass'}`}
+              >
+                {f === 'all' ? '📋 All' : f === 'inside' ? '🏠 Inside' : f === 'outside' ? '🚶 Outside' : '⚠️ Late'}
+              </button>
+            ))}
+          </div>
+
+          <div className="glass rounded-2xl overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr style={{background: 'rgba(226,185,111,0.1)'}}>
+                  {['Student', 'ID', 'Status', 'Last Activity', 'Late Entries'].map(h => (
+                    <th key={h} className="text-left py-3 px-4 font-semibold text-gray-300">{h}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.length === 0 ? (
+                  <tr><td colSpan="5" className="text-center py-8 text-gray-500">No records found</td></tr>
+                ) : filtered.map((row, i) => (
+                  <tr key={row.studentId} className={`border-t border-gray-800 ${i % 2 === 0 ? 'bg-white bg-opacity-5' : ''}`}>
+                    <td className="py-3 px-4 font-medium">{row.name}</td>
+                    <td className="py-3 px-4 mono text-gray-400">{row.studentId}</td>
+                    <td className="py-3 px-4">
+                      <span className={`px-2 py-1 rounded-full text-xs font-bold ${row.inside ? 'badge-in' : 'badge-out'}`}>
+                        {row.inside ? '🏠 Inside' : '🚶 Outside'}
+                      </span>
+                    </td>
+                    <td className="py-3 px-4 text-gray-400 text-xs">
+                      {row.last ? formatDateTime(row.last.timestamp) : '—'}
+                    </td>
+                    <td className="py-3 px-4">
+                      {row.lateCount > 0 
+                        ? <span className="badge-late px-2 py-1 rounded-full text-xs font-bold">{row.lateCount}x late</span>
+                        : <span className="text-green-400 text-xs">✓ Good</span>}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    // ─────────────────────────────────────────────
+    // SETTINGS PAGE
+    // ─────────────────────────────────────────────
+    function SettingsPage({ settings, onSave, showToast }) {
+      const [form, setForm] = useState(settings);
+      const [reminderStatus, setReminderStatus] = useState('');
+
+      const set = (k, v) => setForm(p => ({...p, [k]: v}));
+
+      const handleSave = () => {
+        onSave(form);
+        showToast('Settings saved successfully!', 'success');
+      };
+
+      const sendTestReminder = async () => {
+        setReminderStatus('sending');
+        showToast('Test reminder sent to all registered students!', 'info');
+        setReminderStatus('');
+      };
+
+      return (
+        <div className="fade-in max-w-2xl">
+          <h2 className="text-2xl font-bold mb-6" style={{color: '#e2b96f'}}>Hostel Settings</h2>
+
+          {/* Weekday Settings */}
+          <div className="glass rounded-2xl p-6 mb-4">
+            <h3 className="font-semibold mb-4 text-blue-300">📅 Weekday Timings (Mon–Fri)</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-300 mb-1">Check-in Opens</label>
+                <input type="time" className="input-field" value={form.weekdayCheckin} onChange={e => set('weekdayCheckin', e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-300 mb-1">Gate Closes (Curfew)</label>
+                <input type="time" className="input-field" value={form.weekdayClosing} onChange={e => set('weekdayClosing', e.target.value)} />
+              </div>
+            </div>
+          </div>
+
+          {/* Weekend Settings */}
+          <div className="glass rounded-2xl p-6 mb-4">
+            <h3 className="font-semibold mb-4 text-purple-300">🎉 Weekend Timings (Sat–Sun)</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm text-gray-300 mb-1">Check-in Opens</label>
+                <input type="time" className="input-field" value={form.weekendCheckin} onChange={e => set('weekendCheckin', e.target.value)} />
+              </div>
+              <div>
+                <label className="block text-sm text-gray-300 mb-1">Gate Closes (Curfew)</label>
+                <input type="time" className="input-field" value={form.weekendClosing} onChange={e => set('weekendClosing', e.target.value)} />
+              </div>
+            </div>
+          </div>
+
+          {/* Reminder Settings */}
+          <div className="glass rounded-2xl p-6 mb-6">
+            <h3 className="font-semibold mb-4 text-orange-300">⏰ Reminder Settings</h3>
+            <div className="flex items-center gap-4">
+              <div className="flex-1">
+                <label className="block text-sm text-gray-300 mb-1">Send reminder how many minutes before closing?</label>
+                <input
+                  type="number"
+                  className="input-field"
+                  min="1" max="60"
+                  value={form.reminderMinutes}
+                  onChange={e => set('reminderMinutes', parseInt(e.target.value) || 5)}
+                />
+              </div>
+            </div>
+            <p className="text-gray-500 text-xs mt-2">
+              System will automatically email students {form.reminderMinutes} minutes before the hostel gate closes.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <button onClick={handleSave} className="btn-gold py-3 rounded-xl font-bold">
+              💾 Save Settings
+            </button>
+            <button onClick={sendTestReminder} className="btn-outline py-3 rounded-xl font-bold">
+              📧 Test Reminder Email
+            </button>
+          </div>
+
+          {/* Current Settings Display */}
+          <div className="glass rounded-2xl p-5 mt-6">
+            <h3 className="font-semibold mb-3 text-gray-300">Current Active Settings</h3>
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              {[
+                ['Mode', isWeekend() ? 'Weekend' : 'Weekday'],
+                ['Gate Closes', getClosingTime(form)],
+                ['Reminder at', `${form.reminderMinutes} min before`],
+                ['Status', isLate(form) ? '⛔ Closed' : '✅ Open'],
+              ].map(([k, v]) => (
+                <div key={k} className="flex justify-between">
+                  <span className="text-gray-400">{k}:</span>
+                  <span className="font-semibold" style={{color: '#e2b96f'}}>{v}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ─────────────────────────────────────────────
+    // MAIN APP
+    // ─────────────────────────────────────────────
+    function App() {
+      const [loggedIn, setLoggedIn] = useState(() => storage.get('warden_session', false));
+      const [page, setPage] = useState('dashboard');
+      const [students, setStudents] = useState(() => storage.get('students', []));
+      const [attendance, setAttendance] = useState(() => storage.get('attendance', []));
+      const [settings, setSettings] = useState(() => storage.get('settings', defaultSettings));
+      const [toast, setToast] = useState(null);
+      const [currentTime, setCurrentTime] = useState(new Date());
+      const reminderSentRef = useRef(storage.get('reminder_sent_date', ''));
+
+      // Clock
+      useEffect(() => {
+        const t = setInterval(() => setCurrentTime(new Date()), 1000);
+        return () => clearInterval(t);
+      }, []);
+
+      // Auto daily reset at midnight
+      useEffect(() => {
+        const t = setInterval(() => {
+          const today = new Date().toDateString();
+          const stored = storage.get('reminder_sent_date', '');
+          if (stored !== today) {
+            storage.set('reminder_reset', today);
+            reminderSentRef.current = '';
+          }
+        }, 60000);
+        return () => clearInterval(t);
+      }, []);
+
+      // Reminder system
+      useEffect(() => {
+        if (!loggedIn || students.length === 0) return;
+        const t = setInterval(() => {
+          const today = new Date().toDateString();
+          if (reminderSentRef.current === today) return;
+
+          const closing = getClosingTime(settings);
+          const closingMins = timeToMinutes(closing);
+          const nowMins = nowMinutes();
+          const diff = closingMins - nowMins;
+
+          if (diff > 0 && diff <= settings.reminderMinutes) {
+            reminderSentRef.current = today;
+            storage.set('reminder_sent_date', today);
+
+            // Send reminders to outside students
+            const outsideStudents = students.filter(s => {
+              const logs = attendance.filter(a => a.studentId === s.studentId);
+              const last = logs[logs.length - 1];
+              return !last || last.type === 'checkout';
+            });
+
+            outsideStudents.forEach(student => {
+              sendEmail({ type: 'reminder', student, minutesLeft: diff, closingTime: closing });
+            });
+
+            if (outsideStudents.length > 0) {
+              showToast(`⏰ Reminder sent to ${outsideStudents.length} students outside!`, 'warning');
+            }
+          }
+        }, 30000);
+        return () => clearInterval(t);
+      }, [loggedIn, students, attendance, settings]);
+
+      const showToast = (message, type = 'info') => {
+        setToast({ message, type });
+      };
+
+      const handleRegister = (student) => {
+        const updated = [...students, student];
+        setStudents(updated);
+        storage.set('students', updated);
+      };
+
+      const handleScan = (log) => {
+        const updated = [...attendance, log];
+        setAttendance(updated);
+        storage.set('attendance', updated);
+      };
+
+      const handleSaveSettings = (s) => {
+        setSettings(s);
+        storage.set('settings', s);
+      };
+
+      const handleLogin = () => {
+        setLoggedIn(true);
+        storage.set('warden_session', true);
+      };
+
+      const handleLogout = () => {
+        setLoggedIn(false);
+        storage.set('warden_session', false);
+        setPage('dashboard');
+      };
+
+      if (!loggedIn) return (
+        <>
+          <LoginPage onLogin={handleLogin} />
+          {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+        </>
+      );
+
+      const navItems = [
+        { id: 'dashboard', icon: '📊', label: 'Dashboard' },
+        { id: 'register', icon: '📝', label: 'Register Student' },
+        { id: 'scanner', icon: '📷', label: 'QR Scanner' },
+        { id: 'attendance', icon: '📋', label: 'Attendance' },
+        { id: 'settings', icon: '⚙️', label: 'Settings' },
+      ];
+
+      return (
+        <div className="min-h-screen flex" style={{background: '#0d0d1a'}}>
+          {/* Sidebar */}
+          <div className="w-64 flex-shrink-0 glass border-r border-gray-800 flex flex-col" style={{minHeight: '100vh'}}>
+            {/* Logo */}
+            <div className="p-6 border-b border-gray-800">
+              <div className="flex items-center gap-3">
+                <span className="text-2xl">🏫</span>
+                <div>
+                  <p className="font-bold text-sm leading-tight" style={{color: '#e2b96f'}}>Hostel Warden</p>
+                  <p className="text-xs text-gray-500">Alert System</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Nav */}
+            <nav className="p-4 flex-1">
+              {navItems.map(item => (
+                <div
+                  key={item.id}
+                  className={`sidebar-item ${page === item.id ? 'active' : ''}`}
+                  onClick={() => setPage(item.id)}
+                >
+                  <span className="text-lg">{item.icon}</span>
+                  <span className="text-sm">{item.label}</span>
+                </div>
+              ))}
+            </nav>
+
+            {/* Status & Logout */}
+            <div className="p-4 border-t border-gray-800">
+              <div className="glass rounded-xl p-3 mb-3">
+                <p className="text-xs text-gray-400">Current Time</p>
+                <p className="mono text-sm font-bold" style={{color: '#e2b96f'}}>
+                  {currentTime.toLocaleTimeString()}
+                </p>
+                <p className="text-xs mt-1">
+                  Gate: {isLate(settings) 
+                    ? <span className="text-red-400">⛔ Closed</span>
+                    : <span className="text-green-400">✅ Open</span>}
+                </p>
+              </div>
+              <button onClick={handleLogout} className="btn-outline w-full py-2 rounded-xl text-sm">
+                🔓 Logout
+              </button>
+            </div>
+          </div>
+
+          {/* Main Content */}
+          <div className="flex-1 overflow-auto">
+            <div className="p-8">
+              {page === 'dashboard' && <DashboardPage students={students} attendance={attendance} settings={settings} />}
+              {page === 'register' && <RegistrationPage students={students} onRegister={handleRegister} showToast={showToast} />}
+              {page === 'scanner' && <QRScannerPage students={students} attendance={attendance} onScan={handleScan} settings={settings} showToast={showToast} />}
+              {page === 'attendance' && <AttendancePage students={students} attendance={attendance} />}
+              {page === 'settings' && <SettingsPage settings={settings} onSave={handleSaveSettings} showToast={showToast} />}
+            </div>
+          </div>
+
+          {toast && <Toast {...toast} onClose={() => setToast(null)} />}
+        </div>
+      );
+    }
+
+    // Mount
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
